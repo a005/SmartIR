@@ -2,7 +2,6 @@ import asyncio
 import json
 import logging
 import os.path
-from typing import Optional
 
 import voluptuous as vol
 
@@ -102,8 +101,6 @@ class SmartIRClimate(ClimateEntity, RestoreEntity):
         self._temperature_sensor = config.get(CONF_TEMPERATURE_SENSOR)
         self._humidity_sensor = config.get(CONF_HUMIDITY_SENSOR)
         self._power_sensor = config.get(CONF_POWER_SENSOR)
-        #not used (see assync_turn_on)
-        self._power_sensor_restore_state = config.get(CONF_POWER_SENSOR_RESTORE_STATE)
 
         self._manufacturer = device_data['manufacturer']
         self._supported_models = device_data['supportedModels']
@@ -300,7 +297,7 @@ class SmartIRClimate(ClimateEntity, RestoreEntity):
 
     async def async_set_hvac_mode(self, hvac_mode):
         """Set operation mode."""
-        # hvac_mode that will cause a power_sensor change (toggle to or from 'off')
+        # hvac_mode that will cause a power_sensor change (toggle to/from 'off')
         if self._power_sensor is not None and (hvac_mode == HVAC_MODE_OFF or self._hvac_mode == HVAC_MODE_OFF):
             #change real hvac_mode later after a power_sensor update
             self._hvac_mode_intent = hvac_mode            
@@ -376,22 +373,23 @@ class SmartIRClimate(ClimateEntity, RestoreEntity):
             return
 
         if new_state.state == STATE_ON:            
-            if self._hvac_mode_intent is not None:
+            if self._hvac_mode_intent is not None and self._hvac_mode_intent != HVAC_MODE_OFF:
                 #postponed hvac state change (initiated in async_set_hvac_mode)
                 self._hvac_mode = self._hvac_mode_intent
+                #clear intent
+                self._hvac_mode_intent = None
             elif self._last_on_operation is not None:
-                #restored last hvac state
+                #restored last 'on' hvac state
                 self._hvac_mode = self._last_on_operation
-            elif self._default_on_operation is not None:
-                #default hvac state
-                self._hvac_mode = self._default_on_operation
             else:
-                #undefined 'on' state
-                self._hvac_mode = STATE_ON
+                #default 'on' hvac state
+                self._hvac_mode = self._default_on_operation
         else:            
             self._hvac_mode = HVAC_MODE_OFF
-            
-        self._hvac_mode_intent = None
+            if self._hvac_mode_intent == HVAC_MODE_OFF:
+                #clear intent
+                self._hvac_mode_intent = None
+                
         await self.async_update_ha_state()
 
     @callback
